@@ -6,7 +6,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import chi2_contingency
 
 
 def compute_cluster_odds_ratios(df, cluster_col='cluster', injury_col='injured_any'):
