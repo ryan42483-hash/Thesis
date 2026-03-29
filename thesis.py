@@ -130,7 +130,7 @@ def view(merged_df, X_pca, clean_df, profiles_df):
     plot_cluster_feature_heatmap(profiles_df)
 
 
-def chat(final_vector, injuries):
+def cluster_and_analyze(final_vector, injuries):
     clean_df, merged_df, feature_cols, X_pca, labels = run_clustering_workflow(final_vector, injuries)
     profiles_df = compute_cluster_feature_profiles(clean_df, feature_cols, cluster_col='cluster')
     print_cluster_summaries(profiles_df, top_n=5)
@@ -197,18 +197,10 @@ def plot_player_injury_likelihood(final_vector, injuries, target_gsis_id):
     return player_traj
 
 
-def plot_actual_injury_history(injuries, pbp_player, target_gsis_id):
-    """
-    Plot realized injury severity over seasons for a specific player (no modeling).
-
-    Severity proxy:
-      - weeks_out (bars) shows how many games were missed
-      - weeks_with_injury (line) shows how many weeks any injury was reported
-    Larger values reflect more severe/longer injuries.
-    """
+def build_player_injury_history(injuries, pbp_player, target_gsis_id):
+    """Return per-season injury metrics (including severity) for one player."""
     injury_flags = aggregate_injury_flags(injuries)
 
-    # Build seasons present in the raw player stats for this player
     seasons_in_stats = (
         pbp_player.loc[pbp_player["player_id"] == target_gsis_id, "season"]
         .dropna()
@@ -217,7 +209,6 @@ def plot_actual_injury_history(injuries, pbp_player, target_gsis_id):
     )
     stats_df = pd.DataFrame({"season": seasons_in_stats, "gsis_id": target_gsis_id})
 
-    # Left-join injury info; missing rows mean no injuries that season
     player_hist = stats_df.merge(
         injury_flags,
         on=["gsis_id", "season"],
@@ -225,41 +216,106 @@ def plot_actual_injury_history(injuries, pbp_player, target_gsis_id):
     ).fillna(0)
 
     if player_hist.empty:
-        print(f"No seasons found for player_id={target_gsis_id} in final_vector")
+        print(f"No seasons found for player_id={target_gsis_id} in player stats")
         return player_hist
 
     player_hist = player_hist.sort_values("season")
-    # Map seasons to career year order (1, 2, 3, ...)
     player_hist["career_year"] = range(1, len(player_hist) + 1)
+    player_hist["injury_severity"] = player_hist["weeks_out"] * 2 + player_hist["weeks_with_injury"]
+    return player_hist
 
-    fig, ax1 = plt.subplots()
-    ax1.bar(player_hist["career_year"], player_hist["weeks_out"], color="crimson", alpha=0.6, label="Weeks Out")
+
+def plot_player_injury_history(player_hist: pd.DataFrame, target_gsis_id: str):
+    """Plot weeks out (bars) and weeks with injury (line) by career year."""
+    if player_hist.empty:
+        return
+
+    fig1, ax1 = plt.subplots()
+    ax1.bar(
+        player_hist["career_year"],
+        player_hist["weeks_out"],
+        color="crimson",
+        alpha=0.6,
+        label="Weeks Out",
+    )
     ax1.set_ylabel("Weeks Out (games missed)")
     ax1.set_xlabel("Career Year")
 
-    ax2 = ax1.twinx()
-    ax2.plot(
+    ax1_twin = ax1.twinx()
+    ax1_twin.plot(
         player_hist["career_year"],
         player_hist["weeks_with_injury"],
         color="navy",
         marker="o",
         label="Weeks with Injury",
     )
-    ax2.set_ylabel("Weeks with Injury (any listing)")
+    ax1_twin.set_ylabel("Weeks with Injury (any listing)")
 
-    # Combine legends
     handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(handles1 + handles2, labels1 + labels2, loc="upper right")
+    handles2, labels2 = ax1_twin.get_legend_handles_labels()
+    ax1_twin.legend(handles1 + handles2, labels1 + labels2, loc="upper right")
 
     plt.title(f"Real injury history for {target_gsis_id}")
     plt.tight_layout()
     plt.show()
 
-    return player_hist
+
+def plot_injury_severity(player_hist: pd.DataFrame, target_gsis_id: str):
+    """Plot severity line = 2*weeks_out + weeks_with_injury over career year."""
+    if player_hist.empty:
+        return
+
+    fig2, ax2 = plt.subplots()
+    ax2.plot(
+        player_hist["career_year"],
+        player_hist["injury_severity"],
+        color="firebrick",
+        marker="o",
+        label="Injury severity = 2*weeks_out + weeks_with_injury",
+    )
+    ax2.set_xlabel("Career Year")
+    ax2.set_ylabel("Injury Severity (weighted)")
+    ax2.legend(loc="upper right")
+    plt.title(f"Injury severity over career for {target_gsis_id}")
+    plt.tight_layout()
+    plt.show()
 
 
-    
+def plot_multi_player_severity(histories: dict):
+    """
+    Plot injury severity lines for multiple players on the same axes.
+
+    histories: dict {gsis_id: player_hist_df}
+    """
+    fig, ax = plt.subplots()
+    for pid, hist in histories.items():
+        if hist.empty:
+            continue
+        ax.plot(
+            hist["career_year"],
+            hist["injury_severity"],
+            marker="o",
+            label=pid,
+        )
+    ax.set_xlabel("Career Year")
+    ax.set_ylabel("Injury Severity (weighted)")
+    ax.legend(loc="upper right")
+    plt.title("Injury severity across players")
+    plt.tight_layout()
+    plt.show()
+
+def find_gsis_id(names, pbp_player):
+    ids=[]
+    for name in names:
+        target_id = None
+        for _, row in pbp_player.iterrows():
+            if str(row.get("player_name", "")).strip() == name:
+                target_id = row.get('player_id')
+                print(f"{name} player_id: {target_id}")
+                break
+        if target_id != None:
+            ids.append(target_id)
+    return ids
 
 def main():
     years = []
@@ -267,14 +323,23 @@ def main():
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
     # Iterate through player stats and print player_id for T.Brady if present
-    name = "D.Brees"
-    for _, row in pbp_player.iterrows():
-        if str(row.get("player_name", "")).strip() == name:
-            target_id = row.get('player_id')
-            print(f"{name} player_id: {target_id}")
-            break
+    names = ["D.Brees", "T.Brady"]
+    target_ids = find_gsis_id(names, pbp_player)
 
-    plot_actual_injury_history(pbp_injury, pbp_player, target_id)
+    # Build per-player history, then plot individual and multi-player severity
+    histories = {}
+    for target_id in target_ids:
+        target_hist = build_player_injury_history(pbp_injury, pbp_player, target_id)
+        plot_player_injury_history(target_hist, target_id)
+        plot_injury_severity(target_hist, target_id)
+        histories[target_id] = target_hist
+
+    # Example: add more player IDs to overlay severity curves
+    # extra_ids = ["00-0022793", "00-0030000"]
+    # for pid in extra_ids:
+    #     hist = build_player_injury_history(pbp_injury, pbp_player, pid)
+    #     histories[pid] = hist
+    plot_multi_player_severity(histories)
 
     # all_stats = collect_player_stats(pbp_player)
     # formatted_stats = average_player_stats(all_stats)
@@ -282,7 +347,7 @@ def main():
     # stats_with_snap = average_snap_count_fields(formatted_stats)
     # final_vector = append_player_bio(stats_with_snap, players, years)
     # final_vector = drop_irrelevant_stats(final_vector)
-    # chat(final_vector, pbp_injury)
+    # cluster_and_analyze(final_vector, pbp_injury)
         
 
 if __name__ == "__main__":
