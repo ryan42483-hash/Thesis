@@ -39,6 +39,7 @@ from injury_probability import (
     predict_player_injury_history,
     plot_injury_trajectory,
 )
+from qb_absence_matrix import build_qb_weeks_out_matrix, compute_qb_matrix_svd_pca
 
 injury_ranks = {'Limited Participation in Practice': 1, 
                 'Full Participation in Practice': 0, 
@@ -309,24 +310,37 @@ def main():
     for year in range(2012, 2020):
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
+
+    # Build 8×N QB weeks-out matrix (N = QBs with >=8 seasons)
+    qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury)
+    print("QB weeks-out matrix shape:", qb_matrix.shape)
+    print(qb_matrix.head())
+    print("QB column metadata (first 5):")
+    print(qb_meta.head())
+
+    # Compute SVD/PCA on the QB matrix
+    if not qb_matrix.empty:
+        svd_pca = compute_qb_matrix_svd_pca(qb_matrix, n_components=4)
+        print("Singular values:", svd_pca["S"])
+        print("PCA explained variance ratio:", svd_pca["explained_variance"])
     # Iterate through player stats and print player_id for T.Brady if present
-    names = ["S.Barkley", "A.Peterson", "E.Elliot", "R.White"]
-    target_ids = find_gsis_id(names, pbp_player)
+    # names = ["S.Barkley", "A.Peterson", "E.Elliot", "R.White"]
+    # target_ids = find_gsis_id(names, pbp_player)
 
     # Build per-player history, then plot individual and multi-player severity
-    histories = {}
-    for target_id in target_ids:
-        target_hist = build_player_injury_history(pbp_injury, pbp_player, target_id)
-        plot_player_injury_history(target_hist, target_id)
-        plot_injury_severity(target_hist, target_id)
-        histories[target_id] = target_hist
+    # histories = {}
+    # for target_id in target_ids:
+    #     target_hist = build_player_injury_history(pbp_injury, pbp_player, target_id)
+    #     plot_player_injury_history(target_hist, target_id)
+    #     plot_injury_severity(target_hist, target_id)
+    #     histories[target_id] = target_hist
 
     # Example: add more player IDs to overlay severity curves
     # extra_ids = ["00-0022793", "00-0030000"]
     # for pid in extra_ids:
     #     hist = build_player_injury_history(pbp_injury, pbp_player, pid)
     #     histories[pid] = hist
-    plot_multi_player_severity(histories)
+    # plot_multi_player_severity(histories)
 
     # all_stats = collect_player_stats(pbp_player)
     # formatted_stats = average_player_stats(all_stats)
