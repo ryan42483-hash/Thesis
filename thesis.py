@@ -226,36 +226,23 @@ def build_player_injury_history(injuries, pbp_player, target_gsis_id):
 
 
 def plot_player_injury_history(player_hist: pd.DataFrame, target_gsis_id: str):
-    """Plot weeks out (bars) and weeks with injury (line) by career year."""
+    """Plot weeks out as a line by career year."""
     if player_hist.empty:
         return
 
     fig1, ax1 = plt.subplots()
-    ax1.bar(
+    ax1.plot(
         player_hist["career_year"],
         player_hist["weeks_out"],
         color="crimson",
-        alpha=0.6,
+        marker="o",
         label="Weeks Out",
     )
     ax1.set_ylabel("Weeks Out (games missed)")
     ax1.set_xlabel("Career Year")
+    ax1.legend(loc="upper right")
 
-    ax1_twin = ax1.twinx()
-    ax1_twin.plot(
-        player_hist["career_year"],
-        player_hist["weeks_with_injury"],
-        color="navy",
-        marker="o",
-        label="Weeks with Injury",
-    )
-    ax1_twin.set_ylabel("Weeks with Injury (any listing)")
-
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax1_twin.get_legend_handles_labels()
-    ax1_twin.legend(handles1 + handles2, labels1 + labels2, loc="upper right")
-
-    plt.title(f"Real injury history for {target_gsis_id}")
+    plt.title(f"Weeks out by season for {target_gsis_id}")
     plt.tight_layout()
     plt.show()
 
@@ -283,7 +270,7 @@ def plot_injury_severity(player_hist: pd.DataFrame, target_gsis_id: str):
 
 def plot_multi_player_severity(histories: dict):
     """
-    Plot injury severity lines for multiple players on the same axes.
+    Plot weeks out for multiple players on the same axes.
 
     histories: dict {gsis_id: player_hist_df}
     """
@@ -293,14 +280,14 @@ def plot_multi_player_severity(histories: dict):
             continue
         ax.plot(
             hist["career_year"],
-            hist["injury_severity"],
+            hist["weeks_out"],
             marker="o",
             label=pid,
         )
     ax.set_xlabel("Career Year")
-    ax.set_ylabel("Injury Severity (weighted)")
+    ax.set_ylabel("Weeks Out (games missed)")
     ax.legend(loc="upper right")
-    plt.title("Injury severity across players")
+    plt.title("Weeks out across players")
     plt.tight_layout()
     plt.show()
 
@@ -323,7 +310,7 @@ def main():
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
     # Iterate through player stats and print player_id for T.Brady if present
-    names = ["D.Brees", "T.Brady"]
+    names = ["S.Barkley", "A.Peterson", "E.Elliot", "R.White"]
     target_ids = find_gsis_id(names, pbp_player)
 
     # Build per-player history, then plot individual and multi-player severity
