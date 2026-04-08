@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import math
 from sklearn.decomposition import PCA
 
 from chat_method import aggregate_injury_flags
@@ -182,3 +184,69 @@ def compute_qb_matrix_svd_pca(
 
 
 __all__.extend(["compute_qb_matrix_svd_pca"])
+
+
+def plot_svd_vectors(qb_matrix: pd.DataFrame) -> None:
+    """Plot each row of ``U`` and each column of ``Vt`` from the QB matrix SVD.
+
+    Two figures are produced:
+      1) One subplot per row of ``U`` (rows correspond to career years).
+      2) One subplot per column of ``Vt`` (columns correspond to quarterbacks).
+    """
+
+    if qb_matrix.empty:
+        print("qb_matrix is empty; nothing to plot.")
+        return
+
+    svd_pca = compute_qb_matrix_svd_pca(qb_matrix)
+    U = svd_pca["U"]
+    Vt = svd_pca["Vt"]
+
+    # Plot each row of U in a 2-column grid for better readability
+    num_u_rows = U.shape[0]
+    u_cols = 2
+    u_rows = math.ceil(num_u_rows / u_cols)
+    fig_u, axes_u = plt.subplots(
+        u_rows, u_cols, figsize=(u_cols * 4.5, u_rows * 3), sharex=True
+    )
+    axes_u = np.atleast_2d(axes_u)
+
+    for idx in range(num_u_rows):
+        r, c = divmod(idx, u_cols)
+        ax = axes_u[r, c]
+        ax.plot(U[idx, :], marker="o")
+        ax.set_title(f"U row {idx+1}")
+        ax.set_ylabel("value")
+    # Hide any unused U subplots
+    for idx in range(num_u_rows, u_rows * u_cols):
+        r, c = divmod(idx, u_cols)
+        axes_u[r, c].axis("off")
+
+    axes_u[-1, 0].set_xlabel("Component index")
+    fig_u.tight_layout()
+
+    # Plot each column of Vt (one subplot per QB / column)
+    num_v_cols = Vt.shape[1]
+    max_cols = 3
+    n_rows = math.ceil(num_v_cols / max_cols)
+    fig_v, axes_v = plt.subplots(n_rows, max_cols, figsize=(max_cols * 4, n_rows * 3), sharex=True)
+    axes_v = np.atleast_2d(axes_v)
+
+    for idx in range(num_v_cols):
+        r, c = divmod(idx, max_cols)
+        ax = axes_v[r, c]
+        ax.plot(Vt[:, idx], marker="o")
+        ax.set_title(f"Vt col {idx+1}")
+        ax.set_ylabel("value")
+    # Hide any unused subplots
+    for idx in range(num_v_cols, n_rows * max_cols):
+        r, c = divmod(idx, max_cols)
+        axes_v[r, c].axis("off")
+
+    axes_v[-1, 0].set_xlabel("Component index")
+    fig_v.tight_layout()
+
+    plt.show()
+
+
+__all__.extend(["plot_svd_vectors"])

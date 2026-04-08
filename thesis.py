@@ -1,6 +1,8 @@
 import nflreadpy as nfl
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+np.set_printoptions(threshold=np.inf, linewidth=1000)
 
 from format import (
     append_player_bio,
@@ -39,7 +41,7 @@ from injury_probability import (
     predict_player_injury_history,
     plot_injury_trajectory,
 )
-from qb_absence_matrix import build_qb_weeks_out_matrix, compute_qb_matrix_svd_pca
+from qb_absence_matrix import build_qb_weeks_out_matrix, compute_qb_matrix_svd_pca, plot_svd_vectors
 
 injury_ranks = {'Limited Participation in Practice': 1, 
                 'Full Participation in Practice': 0, 
@@ -305,6 +307,22 @@ def find_gsis_id(names, pbp_player):
             ids.append(target_id)
     return ids
 
+def print_svd_pca(qb_matrix, s=True, u=True, vt=True, pca_model=True, pca_components=True, explained_variance = True):
+    if not qb_matrix.empty:
+        svd_pca = compute_qb_matrix_svd_pca(qb_matrix, n_components=4)
+        if s:
+            print("Singular values:", svd_pca["S"])
+        if u:
+            print("U = ", svd_pca["U"])
+        if vt:
+            print("Vt = ", svd_pca['Vt'])
+        if pca_model:
+            print("PCA model:", svd_pca["pca_model"])
+        if pca_components:
+            print("PCA components:", svd_pca["pca_components"])
+        if explained_variance:
+            print("PCA explained variance:", svd_pca["explained_variance"])
+
 def main():
     years = []
     for year in range(2012, 2020):
@@ -319,10 +337,8 @@ def main():
     print(qb_meta.head())
 
     # Compute SVD/PCA on the QB matrix
-    if not qb_matrix.empty:
-        svd_pca = compute_qb_matrix_svd_pca(qb_matrix, n_components=4)
-        print("Singular values:", svd_pca["S"])
-        print("PCA explained variance ratio:", svd_pca["explained_variance"])
+    # print_svd_pca(qb_matrix)
+    plot_svd_vectors(qb_matrix)
     # Iterate through player stats and print player_id for T.Brady if present
     # names = ["S.Barkley", "A.Peterson", "E.Elliot", "R.White"]
     # target_ids = find_gsis_id(names, pbp_player)
