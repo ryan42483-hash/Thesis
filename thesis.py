@@ -337,13 +337,14 @@ def main():
     print(qb_meta.head())
 
     # Compute SVD/PCA on the QB matrix
-    # print_svd_pca(qb_matrix)
-    plot_svd_vectors(qb_matrix)
+    print_svd_pca(qb_matrix)
+    plot_svd_vectors(qb_matrix, single_plot_per_fig=True)
+
     # Iterate through player stats and print player_id for T.Brady if present
-    # names = ["S.Barkley", "A.Peterson", "E.Elliot", "R.White"]
+    # names = ["E.Manning", "D.Brees", "T.Brady", "R.Wilson", "N.Foles", "K.Cousins"]
     # target_ids = find_gsis_id(names, pbp_player)
 
-    # Build per-player history, then plot individual and multi-player severity
+    # # Build per-player history, then plot individual and multi-player severity
     # histories = {}
     # for target_id in target_ids:
     #     target_hist = build_player_injury_history(pbp_injury, pbp_player, target_id)
