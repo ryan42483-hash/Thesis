@@ -51,6 +51,7 @@ def qbs_with_min_seasons(
 def build_qb_weeks_out_matrix(
     pbp_player: pd.DataFrame,
     pbp_injury: pd.DataFrame,
+    position = "QB",
     *,
     career_length: int = 8,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -77,7 +78,7 @@ def build_qb_weeks_out_matrix(
         Mapping of column labels to player_id and the seasons used.
     """
 
-    eligible_qbs = qbs_with_min_seasons(pbp_player, min_seasons=career_length)
+    eligible_qbs = qbs_with_min_seasons(pbp_player, min_seasons=career_length, position = position)
     if eligible_qbs.empty:
         return pd.DataFrame(), pd.DataFrame()
 
@@ -139,6 +140,133 @@ def build_qb_weeks_out_matrix(
 __all__ = ["qbs_with_min_seasons", "build_qb_weeks_out_matrix"]
 
 
+def aggregate_injury_severity(pbp_injury: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate weekly injury data to one row per player per season with:
+      - weeks_out
+      - weeks_injured
+      - severity_score = 3 * weeks_out + weeks_injured
+    """
+
+    df = pbp_injury.copy()
+
+    # Adjust these columns if your injury dataset uses different names.
+    # Common assumption:
+    #   - gsis_id identifies the player
+    #   - season is the NFL season
+    #   - report_status contains strings like "Out", "Questionable", etc.
+    #   - one row per player-week
+    status_col = "report_status"
+
+    # Normalize status text
+    df[status_col] = df[status_col].fillna("").astype(str).str.strip().str.lower()
+
+    # Count weeks officially "out"
+    out_statuses = {
+        "out",
+        "out (definitely will not play)",
+    }
+
+    # Count weeks with any injury designation
+    injured_statuses = {
+        "out",
+        "out (definitely will not play)",
+        "questionable",
+        "doubtful",
+        "limited participation in practice",
+        "did not participate in practice",
+        "full participation in practice",
+    }
+
+    df["is_out"] = df[status_col].isin(out_statuses).astype(int)
+    df["is_injured"] = df[status_col].isin(injured_statuses).astype(int)
+
+    rollup = (
+        df.groupby(["gsis_id", "season"], as_index=False)
+        .agg(
+            weeks_out=("is_out", "sum"),
+            weeks_injured=("is_injured", "sum"),
+        )
+    )
+
+    rollup["severity_score"] = 5 * rollup["weeks_out"] + rollup["weeks_injured"]
+    return rollup
+
+def build_qb_injury_severity_matrix(
+    pbp_player: pd.DataFrame,
+    pbp_injury: pd.DataFrame,
+    position="QB",
+    *,
+    career_length: int = 8,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Create a career_length x N matrix of injury severity scores for veteran players.
+
+    Severity score per season:
+        3 * weeks_out + weeks_injured
+    """
+
+    eligible_qbs = qbs_with_min_seasons(
+        pbp_player,
+        min_seasons=career_length,
+        position=position,
+    )
+    if eligible_qbs.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    injury_rollup = aggregate_injury_severity(pbp_injury)
+
+    matrix_columns: dict[str, list[int]] = {}
+    metadata_rows: list[dict[str, object]] = []
+
+    for _, qb_row in eligible_qbs.iterrows():
+        qb_id = qb_row["player_id"]
+        qb_name = qb_row.get("player_display_name")
+        label = str(qb_name) if pd.notna(qb_name) else str(qb_id)
+
+        qb_seasons = (
+            pbp_player.loc[pbp_player["player_id"] == qb_id, "season"]
+            .dropna()
+            .astype(int)
+            .drop_duplicates()
+            .sort_values()
+            .tolist()
+        )
+
+        seasons_used = qb_seasons[:career_length]
+        if len(seasons_used) < career_length:
+            continue
+
+        severity_by_year: list[int] = []
+        for season in seasons_used:
+            row = injury_rollup[
+                (injury_rollup["gsis_id"] == qb_id) &
+                (injury_rollup["season"] == season)
+            ]
+            severity = int(row["severity_score"].iloc[0]) if not row.empty else 0
+            severity_by_year.append(severity)
+
+        matrix_columns[label] = severity_by_year
+        metadata_rows.append(
+            {
+                "column_label": label,
+                "player_id": qb_id,
+                "player_display_name": qb_name,
+                "seasons_used": seasons_used,
+            }
+        )
+
+    if not matrix_columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    matrix_df = pd.DataFrame(matrix_columns)
+    matrix_df.index = range(1, career_length + 1)
+    matrix_df.index.name = "career_year"
+
+    qb_meta = pd.DataFrame(metadata_rows)
+    return matrix_df, qb_meta
+
+
+
 def compute_qb_matrix_svd_pca(
     qb_matrix: pd.DataFrame,
     n_components: int | None = None,
@@ -168,18 +296,12 @@ def compute_qb_matrix_svd_pca(
 
     # Full SVD (no economy mode) for clarity downstream
     U, S, Vt = np.linalg.svd(matrix_values, full_matrices=False)
-
-    # PCA on the same data
-    pca = PCA(n_components=n_components)
-    pca.fit(matrix_values)
+    print("Vt shape: ", Vt.shape)
 
     return {
         "U": U,
         "S": S,
         "Vt": Vt,
-        "pca_model": pca,
-        "pca_components": pca.components_,
-        "explained_variance": pca.explained_variance_ratio_,
     }
 
 
@@ -209,7 +331,6 @@ def plot_svd_vectors(qb_matrix: pd.DataFrame, single_plot_per_fig: bool = False)
     svd_pca = compute_qb_matrix_svd_pca(qb_matrix)
     U = svd_pca["U"]
     Vt = svd_pca["Vt"]
-
     # Plot U vectors
     num_u_rows = U.shape[0]
     if single_plot_per_fig:
@@ -278,3 +399,37 @@ def plot_svd_vectors(qb_matrix: pd.DataFrame, single_plot_per_fig: bool = False)
 
 
 __all__.extend(["plot_svd_vectors"])
+
+
+def calc_pc_from_vt(qb_matrix: pd.DataFrame, Vt: np.ndarray):
+    """Dot products without transposing: recon[r,c] = dot(qb_row r, Vt row c).
+
+    Assumes ``qb_matrix`` and ``Vt`` are aligned on the column dimension
+    (same number/order of columns), so we can work directly in their given
+    shapes and return an array matching ``qb_matrix`` (8×N).
+    """
+
+    if qb_matrix.empty:
+        return np.array([])
+
+    X = qb_matrix.to_numpy(dtype=float)  # shape: (rows, cols)
+
+    if Vt.shape[1] != X.shape[1]:
+        raise ValueError(
+            f"Vt has {Vt.shape[1]} columns; expected {X.shape[1]} to match qb_matrix."
+        )
+
+    rows, cols = X.shape
+    if Vt.shape[0] != rows:
+        raise ValueError(
+            f"Vt has {Vt.shape[0]} rows; expected {rows} to match qb_matrix rows."
+        )
+
+    n = cols
+    recon = np.zeros((n, n))
+
+    for r in range(n):
+        for c in range(n):
+            recon[r, c] = float(np.dot(X[:, r], Vt[:, c]))
+
+    return recon

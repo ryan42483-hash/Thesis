@@ -14,6 +14,7 @@ from format import (
 from chat_method import (
     aggregate_injury_flags,
     chi_square_cluster_injury_test,
+    cluster_on_first_3_pcs,
     drop_irrelevant_stats,
     prepare_feature_matrix,
     run_kmeans_clusters,
@@ -28,12 +29,15 @@ from interpret import (
     plot_cluster_injury_rate,
     plot_cluster_injury_severity,
     plot_pca_clusters,
+    plot_pca_3d,  # Add this
     print_cluster_summaries,
 )
+
 from more_visuals import (
     compute_cluster_odds_ratios,
     plot_cluster_odds_ratio_forest,
     plot_injury_rate_diff_from_mean,
+    plot_real_vs_synthetic,
 )
 from injury_probability import (
     append_career_year_index,
@@ -41,7 +45,9 @@ from injury_probability import (
     predict_player_injury_history,
     plot_injury_trajectory,
 )
-from qb_absence_matrix import build_qb_weeks_out_matrix, compute_qb_matrix_svd_pca, plot_svd_vectors
+
+from synthetic_control import build_synthetic_player
+from qb_absence_matrix import build_qb_weeks_out_matrix, compute_qb_matrix_svd_pca, plot_svd_vectors, calc_pc_from_vt, build_qb_injury_severity_matrix
 
 injury_ranks = {'Limited Participation in Practice': 1, 
                 'Full Participation in Practice': 0, 
@@ -307,21 +313,14 @@ def find_gsis_id(names, pbp_player):
             ids.append(target_id)
     return ids
 
-def print_svd_pca(qb_matrix, s=True, u=True, vt=True, pca_model=True, pca_components=True, explained_variance = True):
+def print_svd_pca(qb_matrix, svd_pca, s=True, u=True, vt=True):
     if not qb_matrix.empty:
-        svd_pca = compute_qb_matrix_svd_pca(qb_matrix, n_components=4)
         if s:
             print("Singular values:", svd_pca["S"])
         if u:
             print("U = ", svd_pca["U"])
         if vt:
             print("Vt = ", svd_pca['Vt'])
-        if pca_model:
-            print("PCA model:", svd_pca["pca_model"])
-        if pca_components:
-            print("PCA components:", svd_pca["pca_components"])
-        if explained_variance:
-            print("PCA explained variance:", svd_pca["explained_variance"])
 
 def main():
     years = []
@@ -329,17 +328,65 @@ def main():
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
 
+    position = "CB"
+    player="Richard Sherman"
     # Build 8×N QB weeks-out matrix (N = QBs with >=8 seasons)
-    qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury)
-    print("QB weeks-out matrix shape:", qb_matrix.shape)
-    print(qb_matrix.head())
-    print("QB column metadata (first 5):")
-    print(qb_meta.head())
+    qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury, position)
+    bruh, _ = build_qb_injury_severity_matrix(pbp_player, pbp_injury, position=position)
+    matricies = [qb_matrix, bruh]
+    print(bruh.columns.tolist())
+    for matrix in matricies:
 
-    # Compute SVD/PCA on the QB matrix
-    print_svd_pca(qb_matrix)
-    plot_svd_vectors(qb_matrix, single_plot_per_fig=True)
+        # print("Matrix: ", matrix)
+        # print("Shape: ", matrix.shape)
+        # print("QB weeks-out matrix shape:", qb_matrix.shape)
+        # pd.set_option("display.max_rows", None)
+        # pd.set_option("display.max_columns", None)
+        # print("\nFull QB weeks-out matrix:\n", qb_matrix.to_string())
+        # print("QB column metadata (first 5):")
+        # print(qb_meta.head())
 
+        # Compute SVD/PCA on the QB matrix
+        svd_pca = compute_qb_matrix_svd_pca(matrix, n_components=3)
+        # print_svd_pca(matrix, svd_pca, False, False, False)
+        principal_comp = calc_pc_from_vt(matrix, svd_pca["Vt"])
+        # print(principal_comp.shape)
+        # print(principal_comp)
+        # plot_svd_vectors(qb_matrix, single_plot_per_fig=True)
+
+        # After you compute principal_comp from the SVD
+        # Plot first 3 PCs in 3D (no cluster colors yet)
+        # plot_pca_3d(principal_comp, labels=None, title='First 3 PCs Before Clustering')
+        # print(principal_comp)
+        # Then cluster based on the 3 PCs
+        labels_3d, kmeans_3d, X_3d = cluster_on_first_3_pcs(principal_comp, n_clusters=5)
+
+        # Plot again with cluster colors
+        plot_pca_3d(principal_comp, labels=labels_3d, title='First 3 PCs Colored by Cluster')
+
+        player_idx = -1
+        names = matrix.columns.tolist()
+        for name_idx in range(len(names)):
+            if player == names[name_idx]:
+                player_idx = name_idx
+                break
+        if player_idx == -1:
+            print(f"Player {player} not found")
+            return
+        synthetic, weights, donor_indices, result = build_synthetic_player(matrix.T, labels_3d, player_idx)
+
+        # print("Target player:", player_idx)
+        print("Donor players:", donor_indices)
+        print("Weights:", weights)
+        # print("Synthetic player:", synthetic)
+
+        real_player = matrix.T.iloc[player_idx].to_numpy()
+
+        # print("Real player:     ", real_player)
+        # print("Synthetic player:", synthetic)
+        print("Reconstruction error:", np.sum((real_player - synthetic) ** 2))
+        
+        plot_real_vs_synthetic(real_player, synthetic, player_idx)
     # Iterate through player stats and print player_id for T.Brady if present
     # names = ["E.Manning", "D.Brees", "T.Brady", "R.Wilson", "N.Foles", "K.Cousins"]
     # target_ids = find_gsis_id(names, pbp_player)

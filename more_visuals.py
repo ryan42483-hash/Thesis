@@ -133,3 +133,45 @@ def plot_cluster_odds_ratio_forest(or_stats, cluster_col='cluster'):
     plt.title('Injury Odds Ratio by Cluster')
     plt.tight_layout()
     plt.show()
+
+
+def plot_real_vs_synthetic(real_player, synthetic_player, player_idx=None):
+    """
+    Plot real vs synthetic player injury trajectories on the same graph.
+
+    Parameters
+    ----------
+    real_player : array-like
+        Shape (n_weeks,), real player's injury data
+    synthetic_player : array-like
+        Shape (n_weeks,), synthetic player's data
+    player_idx : int, optional
+        Player index for labeling
+    """
+
+    real = np.asarray(real_player)
+    synth = np.asarray(synthetic_player)
+
+    if real.shape != synth.shape:
+        raise ValueError("real_player and synthetic_player must have the same shape")
+
+    weeks = np.arange(1, len(real) + 1)
+
+    plt.figure(figsize=(8, 5))
+
+    plt.plot(weeks, real, marker='o', linewidth=2, label="Real Player")
+    plt.plot(weeks, synth, marker='s', linestyle='--', linewidth=2, label="Synthetic Player")
+
+    plt.xlabel("Week")
+    plt.ylabel("Injury Severity / Games Missed")
+    
+    if player_idx is not None:
+        plt.title(f"Player {player_idx}: Real vs Synthetic Injury Trajectory")
+    else:
+        plt.title("Real vs Synthetic Player")
+
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()

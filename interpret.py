@@ -240,3 +240,47 @@ def compare_clusters_means(df, feature_cols, clusters_to_compare):
     )
     return summary
 
+
+
+
+def plot_pca_3d(X_pca, labels=None, title='First 3 Principal Components (3D)', 
+                elev=30, azim=45):
+    """
+    Interactive-style 3D scatter plot of the first three principal components.
+    
+    Parameters
+    ----------
+    X_pca : np.ndarray
+        Full PCA-transformed feature matrix (n_samples, n_components).
+        The function will use the first 3 columns.
+    labels : array-like, optional
+        Cluster labels to color points by. If None, all points will be the same color.
+    title : str
+        Title for the plot.
+    elev : float
+        Elevation angle (degrees) for the 3D view.
+    azim : float
+        Azimuthal angle (degrees) for the 3D view.
+    """
+    X_3d = X_pca[:, :3]
+    # print("3D: ", X_3d)
+    
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    if labels is not None:
+        scatter = ax.scatter(X_3d[:, 0], X_3d[:, 1], X_3d[:, 2], 
+                             c=labels, cmap='tab10', alpha=0.7, s=20)
+        plt.colorbar(scatter, ax=ax, label='Cluster', shrink=0.6)
+    else:
+        ax.scatter(X_3d[:, 0], X_3d[:, 1], X_3d[:, 2], 
+                   alpha=0.7, s=20, color='steelblue')
+    
+    ax.set_xlabel('PC1')
+    ax.set_ylabel('PC2')
+    ax.set_zlabel('PC3')
+    ax.set_title(title)
+    ax.view_init(elev=elev, azim=azim)
+    
+    plt.tight_layout()
+    plt.show()

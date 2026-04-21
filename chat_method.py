@@ -192,3 +192,40 @@ def chi_square_cluster_injury_test(
     contingency = pd.crosstab(merged_df[cluster_col], merged_df[injury_col])
     chi2, p_val, dof, expected = chi2_contingency(contingency)
     return chi2, p_val, dof, expected, contingency
+
+
+
+# --------------------------------------------------------------------------- #
+# 3D PCA Clustering
+# --------------------------------------------------------------------------- #
+
+def cluster_on_first_3_pcs(X_pca, n_clusters=6, random_state=42):
+    """
+    Cluster players based on only the first 3 principal components.
+
+    Parameters
+    ----------
+    X_pca : np.ndarray
+        Full PCA-transformed feature matrix (n_samples, n_components).
+    n_clusters : int, default=6
+        Number of KMeans clusters.
+    random_state : int, default=42
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    labels : np.ndarray
+        Cluster label for each player (n_samples,).
+    kmeans_model : KMeans
+        Fitted KMeans model.
+    X_3d : np.ndarray
+        The first 3 principal components used for clustering (n_samples, 3).
+    """
+    # Extract the first 3 principal components
+    X_3d = X_pca[:, :3]
+
+    # Cluster on the 3D vectors
+    kmeans_model = KMeans(n_clusters=n_clusters, random_state=random_state)
+    labels = kmeans_model.fit_predict(X_3d)
+
+    return labels, kmeans_model, X_3d
