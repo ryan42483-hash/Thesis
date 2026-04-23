@@ -51,9 +51,8 @@ def qbs_with_min_seasons(
 def build_qb_weeks_out_matrix(
     pbp_player: pd.DataFrame,
     pbp_injury: pd.DataFrame,
-    position = "QB",
-    *,
-    career_length: int = 8,
+    positions = ["QB"],
+    career_length=8
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Create an ``career_length`` × N matrix of weeks-out for veteran QBs.
 
@@ -78,9 +77,20 @@ def build_qb_weeks_out_matrix(
         Mapping of column labels to player_id and the seasons used.
     """
 
-    eligible_qbs = qbs_with_min_seasons(pbp_player, min_seasons=career_length, position = position)
-    if eligible_qbs.empty:
-        return pd.DataFrame(), pd.DataFrame()
+    # eligible_qbs = qbs_with_min_seasons(pbp_player, min_seasons=career_length, position = position)
+    # if eligible_qbs.empty:
+    #     return pd.DataFrame(), pd.DataFrame()
+    
+    # positions = players["position"].dropna().unique()
+
+    combined_df = pd.concat(
+        [
+            qbs_with_min_seasons(pbp_player, career_length, pos)
+            for pos in positions
+            if not qbs_with_min_seasons(pbp_player, career_length, pos).empty
+        ],
+        ignore_index=True
+)
 
     # Pre-aggregate injury data to season level.
     injury_rollup = aggregate_injury_flags(pbp_injury)
@@ -88,7 +98,7 @@ def build_qb_weeks_out_matrix(
     matrix_columns: dict[str, list[int]] = {}
     metadata_rows: list[dict[str, object]] = []
 
-    for _, qb_row in eligible_qbs.iterrows():
+    for _, qb_row in combined_df.iterrows():
         qb_id = qb_row["player_id"]
         qb_name = qb_row.get("player_display_name")
         label = str(qb_name) if qb_name and qb_name == qb_name else str(qb_id)
@@ -195,9 +205,8 @@ def aggregate_injury_severity(pbp_injury: pd.DataFrame) -> pd.DataFrame:
 def build_qb_injury_severity_matrix(
     pbp_player: pd.DataFrame,
     pbp_injury: pd.DataFrame,
-    position="QB",
-    *,
-    career_length: int = 8,
+    positions=["QB"],
+    career_length=8
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Create a career_length x N matrix of injury severity scores for veteran players.
 
@@ -205,20 +214,31 @@ def build_qb_injury_severity_matrix(
         3 * weeks_out + weeks_injured
     """
 
-    eligible_qbs = qbs_with_min_seasons(
-        pbp_player,
-        min_seasons=career_length,
-        position=position,
-    )
-    if eligible_qbs.empty:
-        return pd.DataFrame(), pd.DataFrame()
+    # eligible_qbs = qbs_with_min_seasons(
+    #     pbp_player,
+    #     min_seasons=career_length,
+    #     position=position,
+    # )
+    # if eligible_qbs.empty:
+    #     return pd.DataFrame(), pd.DataFrame()
 
+
+    # positions = players["position"].dropna().unique()
+
+    combined_df = pd.concat(
+        [
+            qbs_with_min_seasons(pbp_player, career_length, pos)
+            for pos in positions
+            if not qbs_with_min_seasons(pbp_player, career_length, pos).empty
+        ],
+        ignore_index=True
+    )
     injury_rollup = aggregate_injury_severity(pbp_injury)
 
     matrix_columns: dict[str, list[int]] = {}
     metadata_rows: list[dict[str, object]] = []
 
-    for _, qb_row in eligible_qbs.iterrows():
+    for _, qb_row in combined_df.iterrows():
         qb_id = qb_row["player_id"]
         qb_name = qb_row.get("player_display_name")
         label = str(qb_name) if pd.notna(qb_name) else str(qb_id)

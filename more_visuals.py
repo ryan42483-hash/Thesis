@@ -135,7 +135,7 @@ def plot_cluster_odds_ratio_forest(or_stats, cluster_col='cluster'):
     plt.show()
 
 
-def plot_real_vs_synthetic(real_player, synthetic_player, player_idx=None):
+def plot_real_vs_synthetic(real_player, synthetic_player, player_idx, training_year):
     """
     Plot real vs synthetic player injury trajectories on the same graph.
 
@@ -161,6 +161,8 @@ def plot_real_vs_synthetic(real_player, synthetic_player, player_idx=None):
 
     plt.plot(weeks, real, marker='o', linewidth=2, label="Real Player")
     plt.plot(weeks, synth, marker='s', linestyle='--', linewidth=2, label="Synthetic Player")
+
+    plt.axvline(x=training_year, color='black', linestyle='--', linewidth=2, label='Train/Test Split')
 
     plt.xlabel("Week")
     plt.ylabel("Injury Severity / Games Missed")

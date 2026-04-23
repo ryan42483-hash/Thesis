@@ -324,19 +324,28 @@ def print_svd_pca(qb_matrix, svd_pca, s=True, u=True, vt=True):
 
 def main():
     years = []
-    for year in range(2012, 2020):
+    for year in range(2012, 2023):
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
+    positions = []
 
-    position = "CB"
-    player="Richard Sherman"
+    # for pos in pbp_player["position"]:
+    #     if pd.notna(pos) and pos not in positions:
+    #         positions.append(pos)
+
+    # print(positions)
+    training_years = 5
+    positions = ['K', 'CB', 'FS', 'MLB', 'ILB', 'TE', 'QB', 'DE', 'P', 'WR', 'C', 'LS', 'OLB', 'DT', 'NT', 'G', 'S', 'LB', 'OT', 'RB', 'FB', 'DB', 'DL', 'SAF', 'OL']
+    player="Tom Brady"
     # Build 8×N QB weeks-out matrix (N = QBs with >=8 seasons)
-    qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury, position)
-    bruh, _ = build_qb_injury_severity_matrix(pbp_player, pbp_injury, position=position)
+    qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury, positions, career_length=len(years))
+    bruh, _ = build_qb_injury_severity_matrix(pbp_player, pbp_injury, positions=positions, career_length=len(years))
     matricies = [qb_matrix, bruh]
-    print(bruh.columns.tolist())
+    # print(qb_matrix.columns.tolist())
+    # print(bruh.columns.tolist())
     for matrix in matricies:
 
+        df_copy = matrix.iloc[:training_years, :].copy()
         # print("Matrix: ", matrix)
         # print("Shape: ", matrix.shape)
         # print("QB weeks-out matrix shape:", qb_matrix.shape)
@@ -347,19 +356,19 @@ def main():
         # print(qb_meta.head())
 
         # Compute SVD/PCA on the QB matrix
-        svd_pca = compute_qb_matrix_svd_pca(matrix, n_components=3)
+        svd_pca = compute_qb_matrix_svd_pca(df_copy, n_components=3)
         # print_svd_pca(matrix, svd_pca, False, False, False)
-        principal_comp = calc_pc_from_vt(matrix, svd_pca["Vt"])
+        principal_comp = calc_pc_from_vt(df_copy, svd_pca["Vt"])
         # print(principal_comp.shape)
         # print(principal_comp)
-        # plot_svd_vectors(qb_matrix, single_plot_per_fig=True)
+        # plot_svd_vectors(matrix, single_plot_per_fig=True)
 
         # After you compute principal_comp from the SVD
         # Plot first 3 PCs in 3D (no cluster colors yet)
         # plot_pca_3d(principal_comp, labels=None, title='First 3 PCs Before Clustering')
         # print(principal_comp)
         # Then cluster based on the 3 PCs
-        labels_3d, kmeans_3d, X_3d = cluster_on_first_3_pcs(principal_comp, n_clusters=5)
+        labels_3d, kmeans_3d, X_3d = cluster_on_first_3_pcs(principal_comp, n_clusters=4)
 
         # Plot again with cluster colors
         plot_pca_3d(principal_comp, labels=labels_3d, title='First 3 PCs Colored by Cluster')
@@ -373,10 +382,11 @@ def main():
         if player_idx == -1:
             print(f"Player {player} not found")
             return
-        synthetic, weights, donor_indices, result = build_synthetic_player(matrix.T, labels_3d, player_idx)
+        synthetic, weights, donor_indices, result = build_synthetic_player(df_copy.T, matrix.T, labels_3d, player_idx)
+
 
         # print("Target player:", player_idx)
-        print("Donor players:", donor_indices)
+        print("Donor players:", len(donor_indices))
         print("Weights:", weights)
         # print("Synthetic player:", synthetic)
 
@@ -386,7 +396,7 @@ def main():
         # print("Synthetic player:", synthetic)
         print("Reconstruction error:", np.sum((real_player - synthetic) ** 2))
         
-        plot_real_vs_synthetic(real_player, synthetic, player_idx)
+        plot_real_vs_synthetic(real_player, synthetic, player_idx, training_years)
     # Iterate through player stats and print player_id for T.Brady if present
     # names = ["E.Manning", "D.Brees", "T.Brady", "R.Wilson", "N.Foles", "K.Cousins"]
     # target_ids = find_gsis_id(names, pbp_player)

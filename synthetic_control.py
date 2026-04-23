@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
 
-def build_synthetic_player(X, labels, player_idx):
+def build_synthetic_player(X, Y, labels, player_idx):
     """
     Build a synthetic version of one player using other players in the same cluster.
 
@@ -28,6 +28,7 @@ def build_synthetic_player(X, labels, player_idx):
     """
 
     X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
     labels = np.asarray(labels)
 
     if X.ndim != 2:
@@ -49,6 +50,7 @@ def build_synthetic_player(X, labels, player_idx):
 
     target = X[player_idx]                  # shape (n_weeks,)
     donor_matrix = X[donor_indices]         # shape (n_donors, n_weeks)
+    full_donor_matrix = Y[donor_indices]
 
     # Objective: minimize squared reconstruction error
     def loss(w):
@@ -68,6 +70,6 @@ def build_synthetic_player(X, labels, player_idx):
         raise RuntimeError(f"Optimization failed: {result.message}")
 
     weights = result.x
-    synthetic = weights @ donor_matrix
+    synthetic = weights @ full_donor_matrix
 
     return synthetic, weights, donor_indices, result
