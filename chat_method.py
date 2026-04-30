@@ -93,6 +93,23 @@ def prepare_feature_matrix(player_df: pd.DataFrame, drop_cols=None):
 # --------------------------------------------------------------------------- #
 # Modeling helpers
 # --------------------------------------------------------------------------- #
+import numpy as np
+
+def explain_pca(pca, feature_names, top_n=5):
+    """
+    Prints the top contributing features for each principal component.
+    """
+
+    components = pca.components_
+
+    for i, comp in enumerate(components[:3]):  # top 3 PCs
+        print(f"\nPrincipal Component {i+1}:")
+
+        # Get feature importance (absolute value)
+        sorted_idx = np.argsort(np.abs(comp))[::-1]
+
+        for idx in sorted_idx[:top_n]:
+            print(f"  {feature_names[idx]}: {comp[idx]:.3f}")
 
 def scale_and_pca(feature_matrix, var_explained=0.9):
     """Standardize features then run PCA retaining `var_explained` variance."""
@@ -102,7 +119,7 @@ def scale_and_pca(feature_matrix, var_explained=0.9):
 
     pca = PCA(n_components=var_explained)
     projected = pca.fit_transform(scaled)
-
+    
     return scaled, scaler, projected, pca
 
 

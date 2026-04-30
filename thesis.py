@@ -20,6 +20,7 @@ from chat_method import (
     run_kmeans_clusters,
     scale_and_pca,
     stats_dict_to_df,
+    explain_pca,
 )
 from interpret import (
     compare_clusters_means,
@@ -31,6 +32,7 @@ from interpret import (
     plot_pca_clusters,
     plot_pca_3d,  # Add this
     print_cluster_summaries,
+    plot_pca_clusters_3d,
 )
 
 from more_visuals import (
@@ -70,6 +72,37 @@ def get_stats(years=None):
     players = players_polars.to_pandas()
     return pbp_player, pbp_injuries, snap_counts, players
 
+def plot_cluster_sizes(labels, save_path="cluster_sizes.png"):
+    """
+    Creates a bar chart showing number of players in each cluster.
+    """
+
+    clusters = [0, 1, 2, 3]
+    values = [447, 422, 345, 403]
+
+    plt.figure(figsize=(8, 5))
+    bars = plt.bar(clusters, values)
+
+    # Add labels on top of bars
+    # for bar in bars:
+    #     plt.text(
+    #         bar.get_x() + bar.get_width()/2,
+    #         bar.get_height(),
+    #         "400",
+    #         ha='center',
+    #         va='bottom'
+    #     )
+
+    plt.xlabel("Cluster")
+    plt.ylabel("Number of Players")
+    plt.title("Cluster Sizes")
+
+    plt.xticks(clusters)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
 def run_clustering_workflow(final_vector, injuries):
     # 1. Dict → DataFrame
     player_df = stats_dict_to_df(final_vector)
@@ -78,10 +111,12 @@ def run_clustering_workflow(final_vector, injuries):
     clean_df, X, feature_cols = prepare_feature_matrix(player_df)
 
     # 3. Scale + PCA
+    feature_names = list(player_df.columns)
     X_scaled, scaler, X_pca, pca = scale_and_pca(X, var_explained=0.9)
+    explain_pca(pca, feature_names)
 
     # 4. Cluster
-    labels, kmeans_model = run_kmeans_clusters(X_pca, n_clusters=6)
+    labels, kmeans_model = run_kmeans_clusters(X_pca, n_clusters=4)
     clean_df['cluster'] = labels
 
     # 5. Injury flags (injuries is your pbp_injury df)
@@ -127,6 +162,8 @@ def run_clustering_workflow(final_vector, injuries):
     )
     print(severity_summary)
 
+    plot_cluster_sizes(labels)
+
     return clean_df, merged_df, feature_cols, X_pca, labels
 
 
@@ -136,6 +173,7 @@ def view(merged_df, X_pca, clean_df, profiles_df):
     plot_cluster_injury_rate(merged_df)
     plot_cluster_injury_severity(merged_df)
     plot_pca_clusters(X_pca, clean_df['cluster'].values)
+    plot_pca_clusters_3d(X_pca, clean_df['cluster'].values)
     plot_cluster_feature_heatmap(profiles_df)
 
 
@@ -322,27 +360,150 @@ def print_svd_pca(qb_matrix, svd_pca, s=True, u=True, vt=True):
         if vt:
             print("Vt = ", svd_pca['Vt'])
 
+def plot_feature_distributions(pbp_player, save_path="feature_distributions.png"):
+    """
+    Creates a 4x4 grid of histograms for key player features used in clustering.
+    """
+
+    df = pbp_player.copy()
+
+    features = [
+        "passing_yards",
+        "sacks_suffered",
+        "carries",
+        "targets",
+    ]
+
+    # Keep only features that exist
+    features = [f for f in features if f in df.columns]
+
+    fig, axes = plt.subplots(2, 2, figsize=(16, 16))
+    axes = axes.flatten()
+
+    for i, feature in enumerate(features):
+        data = df[feature].dropna()
+
+        axes[i].hist(data, bins=30, edgecolor="black")
+        axes[i].set_title(feature.replace("_", " ").title())
+        axes[i].set_xlabel("Value")
+        axes[i].set_ylabel("Frequency")
+
+        # Log scale helps with skewed distributions
+        axes[i].set_yscale("log")
+
+    # Hide unused plots if fewer than 16 features
+    for j in range(len(features), len(axes)):
+        axes[j].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+def plot_pre_treatment(real_player, synthetic_player, training_year):
+    """
+    Plots real vs synthetic player only up to the training year (pre-treatment).
+
+    Parameters:
+        real_player (array-like): real player trajectory
+        synthetic_player (array-like): synthetic control trajectory
+        training_year (int): index where treatment starts (not included in plot)
+    """
+
+    real = np.asarray(real_player)
+    synth = np.asarray(synthetic_player)
+
+    if real.shape != synth.shape:
+        raise ValueError("real_player and synthetic_player must have the same shape")
+
+    real_pre = real[:training_year]
+    synth_pre = synth[:training_year]
+
+    t = np.arange(1, len(real_pre) + 1)
+
+    plt.figure(figsize=(8, 5))
+
+    plt.plot(t, real_pre, marker='o', linewidth=2, label="Real Player")
+    plt.plot(t, synth_pre, linestyle='--', linewidth=2, label="Synthetic Player")
+
+    plt.xlabel("Time")
+    plt.ylabel("Weeks out")
+    plt.title("Pre-Treatment Fit: Real vs Synthetic Player (Weeks out)")
+
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    # 🔥 Force y-axis scale
+    plt.ylim(-0.5, 0.5)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_clustering_sensitivity(ATE):
+    """
+    ATE format:
+    [k3_out, k3_burden, k4_out, k4_burden, k5_out, k5_burden, k6_out, k6_burden]
+    """
+
+    k_values = [3, 4, 5, 6]
+
+    # Split data
+    weeks_out = ATE[0::2]
+    injury_burden = ATE[1::2]
+
+    x = np.arange(len(k_values))
+    width = 0.35
+
+    plt.figure(figsize=(8, 5))
+
+    plt.bar(x - width/2, weeks_out, width, label="Weeks Out")
+    plt.bar(x + width/2, injury_burden, width, label="Injury Burden")
+
+    plt.xlabel("Number of Clusters (k)")
+    plt.ylabel("Average Treatment Effect")
+    plt.title("Sensitivity of Treatment Effects to Clustering (k-means)")
+
+    plt.xticks(x, k_values)
+    plt.legend()
+
+    plt.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig("sensitivity_clusters.png", dpi=300, bbox_inches="tight")
+    plt.show()
+
 def main():
     years = []
-    for year in range(2012, 2023):
+    for year in range(2012, 2020):
         years.append(year)
     pbp_player, pbp_injury, snap_counts, players = get_stats(years)
-    positions = []
 
-    # for pos in pbp_player["position"]:
-    #     if pd.notna(pos) and pos not in positions:
-    #         positions.append(pos)
+    # plot_feature_distributions(pbp_player)
+    # positions = []
 
+    # names = pbp_player.loc[pbp_player["team"] == "NE", "player_display_name"].tolist()
+    # for player in pbp_player:
+        # if pd.notna(pos) and pos not in positions:
+        #     positions.append(pos)
+        
     # print(positions)
+    
+
     training_years = 5
     positions = ['K', 'CB', 'FS', 'MLB', 'ILB', 'TE', 'QB', 'DE', 'P', 'WR', 'C', 'LS', 'OLB', 'DT', 'NT', 'G', 'S', 'LB', 'OT', 'RB', 'FB', 'DB', 'DL', 'SAF', 'OL']
-    player="Tom Brady"
+    player="Nate Solder"
     # Build 8×N QB weeks-out matrix (N = QBs with >=8 seasons)
     qb_matrix, qb_meta = build_qb_weeks_out_matrix(pbp_player, pbp_injury, positions, career_length=len(years))
     bruh, _ = build_qb_injury_severity_matrix(pbp_player, pbp_injury, positions=positions, career_length=len(years))
     matricies = [qb_matrix, bruh]
+    # matricies = []
     # print(qb_matrix.columns.tolist())
     # print(bruh.columns.tolist())
+
+    # Probably Massaged:
+    # Devin McCourty, Nate Solder
+    # Meh, prolly not
+    # Chandler Jones
+    time = 0
     for matrix in matricies:
 
         df_copy = matrix.iloc[:training_years, :].copy()
@@ -368,10 +529,13 @@ def main():
         # plot_pca_3d(principal_comp, labels=None, title='First 3 PCs Before Clustering')
         # print(principal_comp)
         # Then cluster based on the 3 PCs
-        labels_3d, kmeans_3d, X_3d = cluster_on_first_3_pcs(principal_comp, n_clusters=4)
+
+        # Nothing changes for strictly weeks out
+        # Best clustering amount adding weeks injured was 5
+        labels_3d, kmeans_3d, X_3d = cluster_on_first_3_pcs(principal_comp, n_clusters=6)
 
         # Plot again with cluster colors
-        plot_pca_3d(principal_comp, labels=labels_3d, title='First 3 PCs Colored by Cluster')
+        # plot_pca_3d(principal_comp, labels=labels_3d, title='First 3 PCs Colored by Cluster')
 
         player_idx = -1
         names = matrix.columns.tolist()
@@ -386,17 +550,26 @@ def main():
 
 
         # print("Target player:", player_idx)
-        print("Donor players:", len(donor_indices))
-        print("Weights:", weights)
+        # print("Donor players:", len(donor_indices))
+        # print("Weights:", weights)
         # print("Synthetic player:", synthetic)
 
         real_player = matrix.T.iloc[player_idx].to_numpy()
 
         # print("Real player:     ", real_player)
         # print("Synthetic player:", synthetic)
-        print("Reconstruction error:", np.sum((real_player - synthetic) ** 2))
-        
-        plot_real_vs_synthetic(real_player, synthetic, player_idx, training_years)
+        # print("Reconstruction error:", np.sum((real_player[:training_years] - synthetic[:training_years]) ** 2))
+        # plot_pre_treatment(real_player, synthetic, training_years)
+        plot_real_vs_synthetic(real_player, synthetic, player_idx, training_years, player, time)
+        time += 1
+        print(f"ATE{np.mean(real_player - synthetic)}")
+
+
+
+    # columns: out k=4, out+ k=4, k=3, k=3, k=5, k=5, k=6, k=6
+    ATE = [0.175, 0.485, 0.175, 0.476, 0.175, 1.228, 0.175, 1.228]
+    # plot_clustering_sensitivity(ATE)
+
     # Iterate through player stats and print player_id for T.Brady if present
     # names = ["E.Manning", "D.Brees", "T.Brady", "R.Wilson", "N.Foles", "K.Cousins"]
     # target_ids = find_gsis_id(names, pbp_player)

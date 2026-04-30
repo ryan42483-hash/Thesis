@@ -144,6 +144,31 @@ def plot_pca_clusters(X_pca, labels):
     plt.tight_layout()
     plt.show()
 
+def plot_pca_clusters_3d(X_pca, labels):
+    """
+    3D scatter plot of the first three PCA components, colored by cluster label.
+    Assumes X_pca has at least 3 columns.
+    """
+    fig = plt.figure(figsize=(9, 7))
+    ax = fig.add_subplot(111, projection="3d")
+
+    scatter = ax.scatter(
+        X_pca[:, 0],
+        X_pca[:, 1],
+        X_pca[:, 2],
+        c=labels,
+        s=40,
+        alpha=0.8
+    )
+
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_zlabel("PC3")
+    ax.set_title("3D PCA of Player Stats Colored by Cluster")
+
+    fig.colorbar(scatter, ax=ax, label="Cluster")
+    plt.tight_layout()
+    plt.show()
 
 def plot_cluster_feature_heatmap(profiles_df, features_to_show=None):
     """
